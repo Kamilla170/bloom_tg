@@ -30,7 +30,6 @@ async def get_user_plan(user_id: int) -> Dict:
             'plan': 'free' | 'pro',
             'expires_at': datetime | None,
             'is_grace_period': bool,
-            'is_lifetime': bool,
             'days_left': int | None,
             'auto_pay': bool,
         }
@@ -42,32 +41,29 @@ async def get_user_plan(user_id: int) -> Dict:
             FROM subscriptions
             WHERE user_id = $1
         """, user_id)
-
+    
     if not row or row['plan'] == 'free':
         return {
             'plan': 'free',
             'expires_at': None,
             'is_grace_period': False,
-            'is_lifetime': False,
             'days_left': None,
             'auto_pay': False,
         }
-
+    
     now = datetime.now()
     expires_at = row['expires_at']
-
+    
     if expires_at and expires_at > now:
         days_left = (expires_at - now).days
         return {
             'plan': 'pro',
             'expires_at': expires_at,
             'is_grace_period': False,
-            # «Доступ навсегда» хранится как подписка на 100 лет
-            'is_lifetime': days_left > 3650,
             'days_left': days_left,
             'auto_pay': bool(row['auto_pay_method_id']),
         }
-
+    
     # Проверяем grace period
     if expires_at:
         grace_end = expires_at + timedelta(days=PRO_GRACE_PERIOD_DAYS)
@@ -76,18 +72,16 @@ async def get_user_plan(user_id: int) -> Dict:
                 'plan': 'pro',
                 'expires_at': expires_at,
                 'is_grace_period': True,
-                'is_lifetime': False,
                 'days_left': 0,
                 'auto_pay': bool(row['auto_pay_method_id']),
             }
-
+    
     # Подписка истекла — переводим на free
     await downgrade_to_free(user_id)
     return {
         'plan': 'free',
         'expires_at': None,
         'is_grace_period': False,
-        'is_lifetime': False,
         'days_left': None,
         'auto_pay': False,
     }
@@ -322,7 +316,7 @@ async def reset_all_usage_limits():
     next_reset = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
     
     async with db.pool.acquire() as conn:
-        await conn.execute("""
+        result = await conn.execute("""
             UPDATE usage_limits
             SET analyses_used = 0, questions_used = 0, reset_date = $1
             WHERE reset_date <= $2
@@ -352,3 +346,19 @@ async def get_expiring_subscriptions(days_before: int = 1) -> list:
         """, now, target_date)
     
     return [dict(row) for row in rows]
+async def has_apology_discount(user_id: int) -> bool:
+    """Проверяет активна ли у пользователя скидка-извинение 40%"""
+    db = await get_db()
+    async with db.pool.acquire() as conn:
+        until = await conn.fetchval("""
+            SELECT apology_discount_until FROM users WHERE user_id = $1
+        """, user_id)
+    
+    if not until:
+        return False
+    
+    now = datetime.now()
+    if until.tzinfo:
+        until = until.replace(tzinfo=None)
+    
+    return until > now
