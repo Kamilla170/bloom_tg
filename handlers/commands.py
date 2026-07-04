@@ -200,21 +200,16 @@ async def stats_command(message: types.Message):
 
         logger.info(f"📊 Статистика для user_id={user_id}: plants={stats['total_plants']}, waterings={stats['total_waterings']}")
 
-        stats_text = f"📊 <b>Ваша статистика</b>\n\n"
+        stats_text = "📊 <b>Ваша статистика</b>\n\n"
         stats_text += f"🌱 <b>Растений:</b> {stats['total_plants']}\n"
         stats_text += f"💧 <b>Поливов:</b> {stats['total_waterings']}\n"
-
-        if stats['total_growing'] > 0:
-            stats_text += f"\n🌿 <b>Выращивание:</b>\n"
-            stats_text += f"• Активных: {stats['active_growing']}\n"
-            stats_text += f"• Завершенных: {stats['completed_growing']}\n"
 
         if stats['first_plant_date']:
             from datetime import datetime
             days_using = (datetime.now().date() - stats['first_plant_date'].date()).days
             stats_text += f"\n📅 <b>Используете бота:</b> {days_using} дней\n"
 
-        stats_text += f"\n🎯 <b>Продолжайте ухаживать за растениями!</b>"
+        stats_text += "\n🎯 <b>Продолжайте ухаживать за растениями!</b>"
 
         await message.answer(
             stats_text,
@@ -342,7 +337,7 @@ async def check_reminders_status_command(message: types.Message):
         else:
             response += "\n<i>Нет напоминаний на эту дату</i>\n"
 
-        response += f"\n💡 Используйте /test_reminders для принудительной проверки"
+        response += "\n💡 Используйте /test_reminders для принудительной проверки"
 
         await message.answer(response, parse_mode="HTML")
 

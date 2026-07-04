@@ -168,7 +168,7 @@ async def adjust_all_plants_for_season():
                 logger.error(f"   ❌ Ошибка для растения {plant.get('id')}: {e}")
         
         logger.info("=" * 60)
-        logger.info(f"✅ КОРРЕКТИРОВКА ЗАВЕРШЕНА")
+        logger.info("✅ КОРРЕКТИРОВКА ЗАВЕРШЕНА")
         logger.info(f"📊 Обновлено: {updated_count}")
         logger.info(f"⏭️ Пропущено: {skipped_count}")
         if error_count:
@@ -197,14 +197,14 @@ async def migrate_base_intervals():
             """)
             
             # Заполняем base_watering_interval из watering_interval где NULL
-            updated = await conn.execute("""
+            await conn.execute("""
                 UPDATE plants
                 SET base_watering_interval = watering_interval
                 WHERE base_watering_interval IS NULL
                   AND watering_interval IS NOT NULL
             """)
             
-            logger.info(f"✅ Миграция base_watering_interval завершена")
+            logger.info("✅ Миграция base_watering_interval завершена")
             
     except Exception as e:
         logger.error(f"❌ Ошибка миграции: {e}", exc_info=True)

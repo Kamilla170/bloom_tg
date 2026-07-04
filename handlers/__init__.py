@@ -9,7 +9,6 @@ from . import plants
 from . import questions
 from . import feedback
 from . import onboarding
-from . import growing
 from . import admin
 from . import subscription
 
@@ -21,7 +20,6 @@ __all__ = [
     'questions',
     'feedback',
     'onboarding',
-    'growing',
     'admin',
     'subscription',
 ]
