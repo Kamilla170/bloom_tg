@@ -183,24 +183,3 @@ def get_days_offset(choice: str) -> int:
     return offsets.get(choice, -1)
 
 
-def get_last_watering_keyboard():
-    """
-    Возвращает клавиатуру для выбора даты последнего полива.
-    """
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    
-    keyboard = [
-        [
-            InlineKeyboardButton(text="💧 Сегодня", callback_data="last_watering_0"),
-            InlineKeyboardButton(text="💧 Вчера", callback_data="last_watering_1"),
-        ],
-        [
-            InlineKeyboardButton(text="💧 2-3 дня назад", callback_data="last_watering_3"),
-            InlineKeyboardButton(text="💧 Неделю назад", callback_data="last_watering_7"),
-        ],
-        [
-            InlineKeyboardButton(text="🤷 Не помню / Пропустить", callback_data="last_watering_skip"),
-        ],
-    ]
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)

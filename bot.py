@@ -1,6 +1,4 @@
 import asyncio
-import logging
-import json
 from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -31,8 +29,8 @@ from services.trigger_service import check_and_send_triggers
 
 # Импорты handlers
 from handlers import (
-    commands, photo, callbacks, plants, 
-    questions, feedback, onboarding, growing, admin,
+    commands, photo, callbacks, plants,
+    questions, feedback, onboarding, admin,
     subscription
 )
 
@@ -147,7 +145,6 @@ def register_handlers():
     dp.include_router(questions.router)
     dp.include_router(feedback.router)
     dp.include_router(onboarding.router)
-    dp.include_router(growing.router)
     dp.include_router(admin.router)  # Admin router для админ-переписки
     dp.include_router(callbacks.router)  # Callbacks последними как fallback
     
@@ -176,7 +173,7 @@ def setup_scheduler():
         id='reminder_check',
         replace_existing=True
     )
-    logger.info(f"✅ Задача 'reminder_check' добавлена: ежедневно в 09:00 МСК")
+    logger.info("✅ Задача 'reminder_check' добавлена: ежедневно в 09:00 МСК")
     
     # Месячные напоминания об обновлении фото в 10:00 МСК
     scheduler.add_job(
@@ -188,7 +185,7 @@ def setup_scheduler():
         id='monthly_reminder_check',
         replace_existing=True
     )
-    logger.info(f"✅ Задача 'monthly_reminder_check' добавлена: ежедневно в 10:00 МСК")
+    logger.info("✅ Задача 'monthly_reminder_check' добавлена: ежедневно в 10:00 МСК")
     
     # 🌍 СЕЗОННАЯ КОРРЕКТИРОВКА - 1 числа каждого месяца в 03:00 МСК
     scheduler.add_job(
@@ -200,7 +197,7 @@ def setup_scheduler():
         id='seasonal_adjustment',
         replace_existing=True
     )
-    logger.info(f"✅ Задача 'seasonal_adjustment' добавлена: 1 числа каждого месяца в 03:00 МСК")
+    logger.info("✅ Задача 'seasonal_adjustment' добавлена: 1 числа каждого месяца в 03:00 МСК")
     
     # 💳 АВТОПЛАТЕЖИ — ежедневно в 12:00 МСК
     scheduler.add_job(
@@ -211,7 +208,7 @@ def setup_scheduler():
         id='auto_payments',
         replace_existing=True
     )
-    logger.info(f"✅ Задача 'auto_payments' добавлена: ежедневно в 12:00 МСК")
+    logger.info("✅ Задача 'auto_payments' добавлена: ежедневно в 12:00 МСК")
     
     # 🔄 СБРОС ЛИМИТОВ — 1 числа каждого месяца в 00:05 МСК
     scheduler.add_job(
@@ -223,7 +220,7 @@ def setup_scheduler():
         id='reset_usage_limits',
         replace_existing=True
     )
-    logger.info(f"✅ Задача 'reset_usage_limits' добавлена: 1 числа каждого месяца в 00:05 МСК")
+    logger.info("✅ Задача 'reset_usage_limits' добавлена: 1 числа каждого месяца в 00:05 МСК")
     
     # 📨 ТРИГГЕРНЫЕ ЦЕПОЧКИ — каждые 15 минут
     scheduler.add_job(
@@ -234,7 +231,7 @@ def setup_scheduler():
         id='trigger_chains',
         replace_existing=True
     )
-    logger.info(f"✅ Задача 'trigger_chains' добавлена: каждые 15 минут")
+    logger.info("✅ Задача 'trigger_chains' добавлена: каждые 15 минут")
     
     # КРИТИЧЕСКИ ВАЖНО: Запускаем планировщик
     scheduler.start()
@@ -349,7 +346,7 @@ async def main():
             
             logger.info("")
             logger.info("=" * 70)
-            logger.info(f"🚀 BLOOM AI v6.1 УСПЕШНО ЗАПУЩЕН")
+            logger.info("🚀 BLOOM AI v6.1 УСПЕШНО ЗАПУЩЕН")
             logger.info(f"🌐 Порт: {PORT}")
             logger.info(f"📡 Webhook: {WEBHOOK_URL}/webhook/***")
             logger.info(f"💳 YooKassa webhook: {WEBHOOK_URL}/yookassa/webhook")

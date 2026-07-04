@@ -5,7 +5,7 @@ Admin Statistics Service
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from database import get_db
 from utils.time_utils import get_moscow_now
