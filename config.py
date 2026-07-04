@@ -49,9 +49,9 @@ SUBSCRIPTION_PLANS = {
     },
     '3months': {
         'label': '3 месяца',
-        'price': 1299,
+        'price': 849,
         'days': 90,
-        'per_month': 433,
+        'per_month': 283,
     },
     '1month': {
         'label': '1 месяц',
