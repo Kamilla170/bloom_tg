@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.exceptions import TelegramForbiddenError
 
@@ -50,6 +50,7 @@ async def check_and_send_reminders(bot):
         logger.info("=" * 60)
 
         await send_watering_reminders(bot)
+        await send_growing_reminders(bot)
 
         logger.info("=" * 60)
         logger.info("✅ ПРОВЕРКА НАПОМИНАНИЙ ЗАВЕРШЕНА")
@@ -159,9 +160,9 @@ async def send_single_watering_reminder(bot, plant_row):
     if plant_row['last_watered']:
         days_ago = (moscow_now.date() - plant_row['last_watered'].date()).days
         if days_ago == 0:
-            time_info = "Последний полив был сегодня"
+            time_info = f"Последний полив был сегодня"
         elif days_ago == 1:
-            time_info = "Последний полив был вчера"
+            time_info = f"Последний полив был вчера"
         else:
             time_info = f"Последний полив был {days_ago} дней назад"
     else:
@@ -170,7 +171,7 @@ async def send_single_watering_reminder(bot, plant_row):
     state_emoji = STATE_EMOJI.get(current_state, '🌱')
     state_name = STATE_NAMES.get(current_state, 'Здоровое')
 
-    message_text = "💧 <b>Время полить растение!</b>\n\n"
+    message_text = f"💧 <b>Время полить растение!</b>\n\n"
     message_text += f"{state_emoji} <b>{plant_name}</b>\n"
     message_text += f"📊 Состояние: {state_name}\n"
     message_text += f"⏰ {time_info}\n"
@@ -178,14 +179,14 @@ async def send_single_watering_reminder(bot, plant_row):
     if days_overdue > 0:
         message_text += f"⚠️ <b>Просрочено на {days_overdue} {'день' if days_overdue == 1 else 'дня' if days_overdue < 5 else 'дней'}</b>\n"
 
-    message_text += "\n"
+    message_text += f"\n"
 
     if current_state == 'flowering':
-        message_text += "💐 Растение цветет - поливайте чаще!\n"
+        message_text += f"💐 Растение цветет - поливайте чаще!\n"
     elif current_state == 'dormancy':
-        message_text += "😴 Период покоя - поливайте реже\n"
+        message_text += f"😴 Период покоя - поливайте реже\n"
     elif current_state == 'stress':
-        message_text += "⚠️ Растение в стрессе - проверьте влажность почвы!\n"
+        message_text += f"⚠️ Растение в стрессе - проверьте влажность почвы!\n"
 
     interval = plant_row.get('watering_interval', 5)
     message_text += f"\n⏱️ Интервал: каждые {interval} дней"
@@ -214,7 +215,100 @@ async def send_single_watering_reminder(bot, plant_row):
             WHERE id = $2
         """, moscow_now_naive, plant_row['reminder_id'])
 
-    logger.info("✅ Напоминание отправлено!")
+    logger.info(f"✅ Напоминание отправлено!")
+
+
+async def send_growing_reminders(bot):
+    """Отправка напоминаний по выращиванию"""
+    try:
+        db = await get_db()
+        moscow_now = get_moscow_now()
+
+        logger.info("")
+        logger.info("🌱 ПРОВЕРКА НАПОМИНАНИЙ ПО ВЫРАЩИВАНИЮ")
+
+        async with db.pool.acquire() as conn:
+            reminders = await conn.fetch("""
+                SELECT r.id as reminder_id, r.task_day, r.stage_number,
+                       gp.id as growing_id, gp.user_id, gp.plant_name, 
+                       gp.task_calendar, gp.current_stage, gp.started_date,
+                       gp.photo_file_id
+                FROM reminders r
+                JOIN growing_plants gp ON r.growing_plant_id = gp.id
+                JOIN user_settings us ON gp.user_id = us.user_id
+                WHERE r.reminder_type = 'task'
+                  AND r.is_active = TRUE
+                  AND us.reminder_enabled = TRUE
+                  AND gp.status = 'active'
+                  AND r.next_date::date <= $1::date
+                  AND (r.last_sent IS NULL OR r.last_sent::date < $1::date)
+            """, moscow_now.date())
+
+            logger.info(f"🔍 Найдено напоминаний по выращиванию: {len(reminders)}")
+
+            blocked_users = set()
+
+            for reminder in reminders:
+                if reminder['user_id'] in blocked_users:
+                    continue
+
+                try:
+                    await send_task_reminder(bot, reminder)
+                except TelegramForbiddenError:
+                    blocked_users.add(reminder['user_id'])
+                    await deactivate_user_reminders(reminder['user_id'])
+                except Exception as e:
+                    logger.error(f"❌ Ошибка отправки задачи: {e}")
+
+    except Exception as e:
+        logger.error(f"❌ ОШИБКА send_growing_reminders: {e}", exc_info=True)
+
+
+async def send_task_reminder(bot, reminder_row):
+    """Отправка напоминания о задаче"""
+    user_id = reminder_row['user_id']
+    growing_id = reminder_row['growing_id']
+    plant_name = reminder_row['plant_name']
+    task_day = reminder_row['task_day']
+
+    message_text = f"🌱 <b>Задача по выращиванию</b>\n\n"
+    message_text += f"<b>{plant_name}</b>\n"
+    message_text += f"📅 День {task_day}\n"
+    message_text += f"\n📋 Проверьте задачи на сегодня!"
+
+    keyboard = [
+        [InlineKeyboardButton(text="✅ Выполнено!", callback_data=f"task_done_{growing_id}_{task_day}")],
+        [InlineKeyboardButton(text="📸 Добавить фото", callback_data=f"add_diary_photo_{growing_id}")],
+    ]
+
+    # TelegramForbiddenError пробрасывается наверх
+    if reminder_row['photo_file_id']:
+        await bot.send_photo(
+            chat_id=user_id,
+            photo=reminder_row['photo_file_id'],
+            caption=message_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+        )
+    else:
+        await bot.send_message(
+            chat_id=user_id,
+            text=message_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+        )
+
+    db = await get_db()
+    moscow_now = get_moscow_now().replace(tzinfo=None)
+    async with db.pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE reminders
+            SET last_sent = $1,
+                send_count = COALESCE(send_count, 0) + 1
+            WHERE id = $2
+        """, moscow_now, reminder_row['reminder_id'])
+
+    logger.info(f"🌱 Напоминание о задаче отправлено: {plant_name} (пользователь {user_id})")
 
 
 async def create_plant_reminder(plant_id: int, user_id: int, interval_days: int = 5):
