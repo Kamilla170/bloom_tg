@@ -1,6 +1,7 @@
 import logging
 import uuid
 import aiohttp
+import json
 from datetime import datetime
 from typing import Dict, Optional
 from base64 import b64encode
@@ -306,20 +307,16 @@ async def _notify_user_payment_success(user_id: int, expires_at: datetime, plan_
     try:
         from bot import bot
         
-        # «Доступ навсегда» хранится как подписка на 100 лет — дату не показываем
-        if expires_at.year >= 2100:
-            expires_text = "📅 Активна: <b>навсегда</b> ♾"
-        else:
-            expires_text = f"📅 Активна до: <b>{expires_at.strftime('%d.%m.%Y')}</b>"
+        expires_str = expires_at.strftime('%d.%m.%Y')
         plan_text = f"\n📦 Тариф: <b>{plan_label}</b>" if plan_label else ""
-
+        
         await bot.send_message(
             chat_id=user_id,
             text=(
                 "🎉 <b>Подписка активирована!</b>\n\n"
                 f"✅ Ваш план: <b>Подписка</b>"
                 f"{plan_text}\n"
-                f"{expires_text}\n\n"
+                f"📅 Активна до: <b>{expires_str}</b>\n\n"
                 "🌱 Теперь у вас безлимитный доступ:\n"
                 "• Неограниченные растения\n"
                 "• Безлимитные анализы фото\n"
