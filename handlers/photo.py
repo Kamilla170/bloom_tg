@@ -6,7 +6,7 @@ from aiogram.filters import StateFilter
 
 from states.user_states import PlantStates
 from services.ai_service import analyze_plant_image
-from services.plant_service import set_temp_analysis, update_plant_state_from_photo
+from services.plant_service import temp_analyses, update_plant_state_from_photo
 from services.subscription_service import check_limit, increment_usage
 from keyboards.plant_menu import plant_analysis_actions
 from utils.formatters import get_state_recommendations
@@ -71,19 +71,10 @@ async def handle_state_update_photo(message: types.Message, state: FSMContext, b
         
         previous_state = plant.get('current_state', 'healthy')
         plant_name = plant['display_name']
-
-        # Подтягиваем историю ухода, чтобы GPT учитывал её при анализе нового фото
-        from plant_memory import get_plant_context
-        try:
-            plant_context = await get_plant_context(plant_id, user_id, focus="general")
-        except Exception as e:
-            logger.error(f"Не удалось загрузить контекст растения {plant_id}: {e}")
-            plant_context = None
-
+        
         result = await analyze_plant_image(
             image_bytes,
-            previous_state=previous_state,
-            plant_context=plant_context
+            previous_state=previous_state
         )
         
         await processing_msg.delete()
@@ -95,9 +86,7 @@ async def handle_state_update_photo(message: types.Message, state: FSMContext, b
             state_info = result.get("state_info", {})
             
             update_result = await update_plant_state_from_photo(
-                plant_id, user_id, photo.file_id, state_info, result.get("raw_analysis", ""),
-                confidence=result.get("confidence", 0),
-                identified_species=result.get("plant_name")
+                plant_id, user_id, photo.file_id, state_info, result.get("raw_analysis", "")
             )
             
             if not update_result["success"]:
@@ -113,7 +102,7 @@ async def handle_state_update_photo(message: types.Message, state: FSMContext, b
                 prev_name = STATE_NAMES.get(previous_state, 'Здоровое')
                 new_name = STATE_NAMES.get(update_result["new_state"], 'Здоровое')
                 
-                response_text += "\n\n🔄 <b>ИЗМЕНЕНИЕ СОСТОЯНИЯ!</b>\n"
+                response_text += f"\n\n🔄 <b>ИЗМЕНЕНИЕ СОСТОЯНИЯ!</b>\n"
                 response_text += f"{prev_emoji} {prev_name} → {new_emoji} {new_name}\n\n"
                 
                 recommendations = get_state_recommendations(update_result["new_state"], plant_name)
@@ -186,7 +175,7 @@ async def handle_photo(message: types.Message, bot):
             # Увеличиваем счётчик использования
             await increment_usage(user_id, 'analyses')
             
-            await set_temp_analysis(user_id, {
+            temp_analyses[user_id] = {
                 "analysis": result.get("raw_analysis", result["analysis"]),
                 "formatted_analysis": result["analysis"],
                 "photo_file_id": photo.file_id,
@@ -195,9 +184,8 @@ async def handle_photo(message: types.Message, bot):
                 "plant_name": result.get("plant_name", "Неизвестное растение"),
                 "confidence": result.get("confidence", 0),
                 "needs_retry": result.get("needs_retry", False),
-                "state_info": result.get("state_info", {}),
-                "watering_interval": result.get("watering_interval")
-            })
+                "state_info": result.get("state_info", {})
+            }
             
             state_info = result.get("state_info", {})
             current_state = state_info.get('current_state', 'healthy')
