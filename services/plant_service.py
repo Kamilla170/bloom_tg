@@ -8,26 +8,8 @@ from config import STATE_EMOJI, STATE_NAMES
 
 logger = logging.getLogger(__name__)
 
-# Временное хранилище анализа фото (черновик перед сохранением растения).
-# Перенесено из RAM в Postgres: больше нет утечки памяти и потери при рестарте.
-# TTL — 24 часа (старые черновики чистятся автоматически при записи).
-
-async def set_temp_analysis(user_id: int, data: dict):
-    """Сохранить черновик анализа фото."""
-    db = await get_db()
-    await db.save_temp_analysis(user_id, data)
-
-
-async def get_temp_analysis(user_id: int):
-    """Получить черновик анализа фото (или None, если нет/протух)."""
-    db = await get_db()
-    return await db.get_temp_analysis(user_id)
-
-
-async def delete_temp_analysis(user_id: int):
-    """Удалить черновик анализа фото."""
-    db = await get_db()
-    await db.delete_temp_analysis(user_id)
+# Временное хранилище для анализов (будет перенесено в Redis в будущем)
+temp_analyses = {}
 
 
 async def save_analyzed_plant(user_id: int, analysis_data: dict, last_watered: datetime = None) -> dict:
@@ -55,10 +37,10 @@ async def save_analyzed_plant(user_id: int, analysis_data: dict, last_watered: d
         # Валидация: интервал должен быть в разумных пределах
         if ai_interval < 3:
             ai_interval = 3
-            logger.warning("⚠️ AI выдал слишком маленький интервал, скорректировано до 3 дней")
+            logger.warning(f"⚠️ AI выдал слишком маленький интервал, скорректировано до 3 дней")
         elif ai_interval > 28:
             ai_interval = 28
-            logger.warning("⚠️ AI выдал слишком большой интервал, скорректировано до 28 дней")
+            logger.warning(f"⚠️ AI выдал слишком большой интервал, скорректировано до 28 дней")
         
         logger.info(f"💧 Интервал полива от GPT: {ai_interval} дней")
         
@@ -150,25 +132,23 @@ async def save_analyzed_plant(user_id: int, analysis_data: dict, last_watered: d
         return {"success": False, "error": str(e)}
 
 
-async def update_plant_state_from_photo(plant_id: int, user_id: int,
-                                        photo_file_id: str, state_info: dict,
-                                        raw_analysis: str,
-                                        confidence: float = 0,
-                                        identified_species: str = None) -> dict:
+async def update_plant_state_from_photo(plant_id: int, user_id: int, 
+                                        photo_file_id: str, state_info: dict, 
+                                        raw_analysis: str) -> dict:
     """Обновление состояния растения по новому фото"""
     try:
         db = await get_db()
         plant = await db.get_plant_by_id(plant_id, user_id)
-
+        
         if not plant:
             return {"success": False, "error": "Растение не найдено"}
-
+        
         previous_state = plant.get('current_state', 'healthy')
         new_state = state_info.get('current_state', 'healthy')
         state_reason = state_info.get('state_reason', 'Анализ AI')
-
+        
         state_changed = (new_state != previous_state)
-
+        
         # Обновляем состояние
         await db.update_plant_state(
             plant_id=plant_id,
@@ -181,24 +161,7 @@ async def update_plant_state_from_photo(plant_id: int, user_id: int,
             feeding_adjustment=state_info.get('feeding_adjustment'),
             recommendations=state_info.get('recommendations', '')
         )
-
-        # Сохраняем полный анализ в историю, чтобы он попадал в контекст будущих анализов
-        try:
-            watering_info = extract_watering_info(raw_analysis)
-            await db.save_full_analysis(
-                plant_id=plant_id,
-                user_id=user_id,
-                photo_file_id=photo_file_id,
-                full_analysis=raw_analysis,
-                confidence=confidence,
-                identified_species=identified_species or plant.get('plant_name'),
-                detected_state=new_state,
-                watering_advice=watering_info.get("personal_recommendations"),
-                lighting_advice=None
-            )
-        except Exception as e:
-            logger.error(f"Не удалось сохранить анализ в историю для растения {plant_id}: {e}")
-
+        
         # Обновляем дату последнего фото
         async with db.pool.acquire() as conn:
             await conn.execute("""
