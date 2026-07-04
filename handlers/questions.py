@@ -227,9 +227,9 @@ async def handle_question(message: types.Message, state: FSMContext):
         
         # Если нет контекста растения - проверяем временный анализ
         if not context_text:
-            from services.plant_service import get_temp_analysis
-            plant_info = await get_temp_analysis(user_id)
-            if plant_info:
+            from services.plant_service import temp_analyses
+            if user_id in temp_analyses:
+                plant_info = temp_analyses[user_id]
                 temp_plant_name = plant_info.get("plant_name", "растение")
                 context_text = f"Контекст: Недавно анализировал {temp_plant_name}"
         
@@ -339,24 +339,27 @@ async def _maybe_send_first_discount(user_id: int, message: types.Message):
         import asyncio
         await asyncio.sleep(3)
         
-        # Отправляем предложение подписки
+        # Отправляем скидку
         discount_text = (
             "⭐ <b>Разблокируйте полный доступ</b>\n\n"
             "На бесплатном плане доступен 1 анализ и 1 вопрос в месяц.\n\n"
-            "Подписка снимает все ограничения — безлимитные "
-            "анализы, вопросы и растения:\n\n"
-            "• 1 месяц — 299₽\n"
-            "• 3 месяца — 849₽\n"
-            "• Доступ навсегда — 1999₽"
+            "Только для новых пользователей — <b>скидка 33%</b> "
+            "на подписку в первые 3 дня:\n\n"
+            "• 1 мес — <s>249₽</s> <b>169₽</b>\n"
+            "• 3 мес — <s>599₽</s> <b>399₽</b>\n"
+            "• 6 мес — <s>1099₽</s> <b>739₽</b>\n"
+            "• 12 мес — <s>2099₽</s> <b>1369₽</b>\n\n"
+            "Подписка снимает все ограничения: безлимитные "
+            "анализы, вопросы и растения."
         )
-
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text="⭐ Выбрать тариф",
-                callback_data="subscribe_pro"
+                text="⭐ Выбрать тариф со скидкой",
+                callback_data="show_discount_plans"
             )]
         ])
-
+        
         await message.answer(discount_text, parse_mode="HTML", reply_markup=keyboard)
         
         # Запускаем follow-up цепочку (24ч и 60ч напоминания)
