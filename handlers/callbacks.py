@@ -2,22 +2,13 @@ import logging
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 
-from keyboards.main_menu import main_menu
-from states.user_states import FeedbackStates
+from keyboards.main_menu import main_menu, simple_back_menu
+from states.user_states import PlantStates, FeedbackStates
 from database import get_db
 
 logger = logging.getLogger(__name__)
 
 router = Router()
-
-
-async def _track_click(user_id: int, button: str):
-    """Записать нажатие кнопки в аналитику. Не ломает обработчик при сбое."""
-    try:
-        db = await get_db()
-        await db.log_button_click(user_id, button)
-    except Exception as e:
-        logger.error(f"Не удалось записать клик '{button}' от {user_id}: {e}")
 
 
 @router.callback_query(F.data == "menu")
@@ -38,7 +29,6 @@ async def add_plant_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "analyze")
 async def analyze_callback(callback: types.CallbackQuery):
     """Анализ растения"""
-    await _track_click(callback.from_user.id, "analyze")
     await callback.message.answer("📸 <b>Пришлите фото для анализа</b>", parse_mode="HTML")
     await callback.answer()
 
@@ -74,15 +64,13 @@ async def stats_callback(callback: types.CallbackQuery):
     """Статистика"""
     # ВАЖНО: берём user_id из callback, а не из message (message.from_user - это бот!)
     user_id = callback.from_user.id
-
-    await _track_click(user_id, "stats")
-
+    
     try:
         from database import get_db
         from keyboards.main_menu import main_menu
         from datetime import datetime
         import logging
-
+        
         logger = logging.getLogger(__name__)
         logger.info(f"📊 Запрос статистики (callback) от user_id={user_id}")
         
@@ -91,15 +79,20 @@ async def stats_callback(callback: types.CallbackQuery):
         
         logger.info(f"📊 Статистика для user_id={user_id}: plants={stats['total_plants']}, waterings={stats['total_waterings']}")
         
-        stats_text = "📊 <b>Ваша статистика</b>\n\n"
+        stats_text = f"📊 <b>Ваша статистика</b>\n\n"
         stats_text += f"🌱 <b>Растений:</b> {stats['total_plants']}\n"
         stats_text += f"💧 <b>Поливов:</b> {stats['total_waterings']}\n"
+        
+        if stats['total_growing'] > 0:
+            stats_text += f"\n🌿 <b>Выращивание:</b>\n"
+            stats_text += f"• Активных: {stats['active_growing']}\n"
+            stats_text += f"• Завершенных: {stats['completed_growing']}\n"
         
         if stats['first_plant_date']:
             days_using = (datetime.now().date() - stats['first_plant_date'].date()).days
             stats_text += f"\n📅 <b>Используете бота:</b> {days_using} дней\n"
         
-        stats_text += "\n🎯 <b>Продолжайте ухаживать за растениями!</b>"
+        stats_text += f"\n🎯 <b>Продолжайте ухаживать за растениями!</b>"
         
         await callback.message.answer(
             stats_text,
