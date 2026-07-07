@@ -1,8 +1,6 @@
 import logging
 from aiogram import Router, F, types
-from aiogram.fsm.context import FSMContext
 
-from states.user_states import PlantStates
 from database import get_db
 
 logger = logging.getLogger(__name__)

@@ -5,8 +5,8 @@ Plant Memory Manager - Система управления полным конт
 
 import logging
 import json
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -397,7 +397,7 @@ class PlantMemoryManager:
                         if qa.get('action_taken'):
                             lines.append(f"    Действие: {qa['action_taken']}")
                         if qa.get('resolved'):
-                            lines.append(f"    ✓ Решено")
+                            lines.append("    ✓ Решено")
                     except Exception as e:
                         logger.error(f"Ошибка форматирования Q&A: {e}")
                         continue

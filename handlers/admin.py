@@ -187,7 +187,7 @@ async def check_plant_command(message: types.Message):
         text = f"🔍 <b>Диагностика растения #{plant_id}</b>\n\n"
         
         # Растение
-        text += f"<b>🌱 Растение:</b>\n"
+        text += "<b>🌱 Растение:</b>\n"
         text += f"   Название: {plant['display_name']}\n"
         text += f"   User ID: <code>{plant['user_id']}</code>\n"
         text += f"   Тип: {plant['plant_type']}\n"
@@ -199,16 +199,16 @@ async def check_plant_command(message: types.Message):
             days_ago = (now.date() - plant['last_watered'].date()).days
             text += f"   Последний полив: {plant['last_watered'].strftime('%d.%m.%Y')} ({days_ago} дн. назад)\n"
         else:
-            text += f"   Последний полив: никогда ❗\n"
+            text += "   Последний полив: никогда ❗\n"
         
         text += f"   Создано: {plant['saved_date'].strftime('%d.%m.%Y %H:%M')}\n"
         
         # Настройки пользователя
-        text += f"\n<b>👤 User settings:</b>\n"
+        text += "\n<b>👤 User settings:</b>\n"
         if user_settings:
             text += f"   reminder_enabled: {'✅' if user_settings['reminder_enabled'] else '❌'}\n"
         else:
-            text += f"   ❌ Запись user_settings НЕ НАЙДЕНА!\n"
+            text += "   ❌ Запись user_settings НЕ НАЙДЕНА!\n"
         
         # Напоминания
         text += f"\n<b>🔔 Напоминания ({len(reminders)}):</b>\n"
@@ -223,11 +223,11 @@ async def check_plant_command(message: types.Message):
                     f"отправлено: {r['send_count'] or 0} раз\n"
                 )
         else:
-            text += f"   ❗ НЕТ ЗАПИСЕЙ В REMINDERS!\n"
+            text += "   ❗ НЕТ ЗАПИСЕЙ В REMINDERS!\n"
         
         # Триггеры
         if triggers:
-            text += f"\n<b>⏰ Триггеры пользователя:</b>\n"
+            text += "\n<b>⏰ Триггеры пользователя:</b>\n"
             for t in triggers:
                 status = "✅ sent" if t['sent'] else ("🛑 cancelled" if t['cancelled'] else "⏳ pending")
                 text += f"   {t['chain_type']} step={t['step']} [{status}] {t['send_at'].strftime('%d.%m %H:%M')}\n"
@@ -355,7 +355,7 @@ async def handle_user_reply_to_admin(message: types.Message, state: FSMContext):
         
         # Сохраняем в базу
         db = await get_db()
-        message_id = await db.send_admin_message(
+        await db.send_admin_message(
             from_user_id=user_id,
             to_user_id=admin_id,
             message_text=reply_text,

@@ -17,8 +17,8 @@ class PlantDatabase:
         try:
             self.pool = await asyncpg.create_pool(
                 self.database_url,
-                min_size=1,
-                max_size=3
+                min_size=2,
+                max_size=10
             )
             await self.create_tables()
             logger.info("✅ База данных подключена")
@@ -388,7 +388,31 @@ class PlantDatabase:
             except Exception as e:
                 logger.info(f"Колонки уже существуют: {e}")
             
+            # Временное хранилище анализа фото (черновик перед сохранением растения).
+            # Раньше хранилось в RAM (утечка памяти + потеря при рестарте) — перенесено в БД.
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS temp_analyses (
+                    user_id BIGINT PRIMARY KEY,
+                    data JSONB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Лог нажатий на кнопки (для аналитики использования функций).
+            # Append-only: одна строка на каждое нажатие.
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS button_clicks (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    button TEXT NOT NULL,
+                    clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # Индексы для оптимизации
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_button_clicks_button ON button_clicks (button)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_button_clicks_clicked_at ON button_clicks (clicked_at)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_temp_analyses_created_at ON temp_analyses (created_at)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_plants_user_id ON plants (user_id)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_plants_state ON plants (current_state)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_plant_state_history_plant_id ON plant_state_history (plant_id)")
@@ -424,10 +448,10 @@ class PlantDatabase:
 
             # Миграция: установить plant_type = 'regular' для всех NULL
             try:
-                updated = await conn.execute("""
+                await conn.execute("""
                     UPDATE plants SET plant_type = 'regular' WHERE plant_type IS NULL
                 """)
-                logger.info(f"✅ Миграция plant_type: обновлено записей")
+                logger.info("✅ Миграция plant_type: обновлено записей")
             except Exception as e:
                 logger.info(f"Миграция plant_type: {e}")
 
@@ -1067,17 +1091,7 @@ class PlantDatabase:
                 ORDER BY saved_date DESC
                 LIMIT $2
             """, user_id, limit)
-            
-            growing_rows = await conn.fetch("""
-                SELECT gp.id, gp.plant_name, gp.photo_file_id, gp.started_date,
-                       gp.current_stage, gp.total_stages, gp.status,
-                       gs.stage_name as current_stage_name
-                FROM growing_plants gp
-                LEFT JOIN growth_stages gs ON gp.id = gs.growing_plant_id AND gs.stage_number = gp.current_stage + 1
-                WHERE gp.user_id = $1 AND gp.status = 'active'
-                ORDER BY gp.started_date DESC
-            """, user_id)
-            
+
             plants = []
             
             for row in regular_rows:
@@ -1105,26 +1119,7 @@ class PlantDatabase:
                 plant_data['display_name'] = display_name
                 plant_data['type'] = 'regular'
                 plants.append(plant_data)
-            
-            for row in growing_rows:
-                stage_info = f"Этап {row['current_stage']}/{row['total_stages']}"
-                if row['current_stage_name']:
-                    stage_info += f": {row['current_stage_name']}"
-                
-                plant_data = {
-                    'id': f"growing_{row['id']}",
-                    'display_name': f"{row['plant_name']} 🌱",
-                    'saved_date': row['started_date'],
-                    'photo_file_id': row['photo_file_id'] or 'default_growing',
-                    'last_watered': None,
-                    'watering_count': 0,
-                    'type': 'growing',
-                    'growing_id': row['id'],
-                    'stage_info': stage_info,
-                    'status': row['status']
-                }
-                plants.append(plant_data)
-            
+
             plants.sort(key=lambda x: x['saved_date'], reverse=True)
             
             return plants[:limit]
@@ -1345,15 +1340,6 @@ class PlantDatabase:
                 WHERE user_id = $1
             """, user_id)
             
-            growing_stats = await conn.fetchrow("""
-                SELECT 
-                    COUNT(*) as total_growing,
-                    COUNT(CASE WHEN status = 'active' THEN 1 END) as active_growing,
-                    COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_growing
-                FROM growing_plants 
-                WHERE user_id = $1
-            """, user_id)
-            
             feedback_stats = await conn.fetchrow("""
                 SELECT COUNT(*) as total_feedback
                 FROM feedback 
@@ -1367,9 +1353,6 @@ class PlantDatabase:
                 'plants_with_reminders': regular_stats['plants_with_reminders'] or 0,
                 'first_plant_date': regular_stats['first_plant_date'],
                 'last_watered_date': regular_stats['last_watered_date'],
-                'total_growing': growing_stats['total_growing'] or 0,
-                'active_growing': growing_stats['active_growing'] or 0,
-                'completed_growing': growing_stats['completed_growing'] or 0,
                 'total_feedback': feedback_stats['total_feedback'] or 0
             }
     
@@ -1411,6 +1394,50 @@ class PlantDatabase:
             
             return [dict(row) for row in rows]
     
+    # === ВРЕМЕННОЕ ХРАНИЛИЩЕ АНАЛИЗА ФОТО (черновик перед сохранением) ===
+
+    async def save_temp_analysis(self, user_id: int, data: dict, ttl_hours: int = 24):
+        """Сохранить (перезаписать) черновик анализа фото пользователя.
+        Заодно чистит протухшие записи старше ttl_hours."""
+        payload = json.dumps(data, default=str, ensure_ascii=False)
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM temp_analyses WHERE created_at < CURRENT_TIMESTAMP - ($1 || ' hours')::interval",
+                str(ttl_hours)
+            )
+            await conn.execute("""
+                INSERT INTO temp_analyses (user_id, data, created_at)
+                VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE
+                SET data = EXCLUDED.data, created_at = EXCLUDED.created_at
+            """, user_id, payload)
+
+    async def get_temp_analysis(self, user_id: int, ttl_hours: int = 24) -> Optional[Dict]:
+        """Получить черновик анализа. Возвращает None, если его нет или он протух."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT data FROM temp_analyses
+                WHERE user_id = $1
+                  AND created_at >= CURRENT_TIMESTAMP - ($2 || ' hours')::interval
+            """, user_id, str(ttl_hours))
+        if not row:
+            return None
+        raw = row['data']
+        return json.loads(raw) if isinstance(raw, str) else raw
+
+    async def delete_temp_analysis(self, user_id: int):
+        """Удалить черновик анализа пользователя."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM temp_analyses WHERE user_id = $1", user_id)
+
+    async def log_button_click(self, user_id: int, button: str):
+        """Записать нажатие на кнопку (для аналитики использования функций)."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO button_clicks (user_id, button) VALUES ($1, $2)",
+                user_id, button
+            )
+
     async def save_qa_interaction(self, plant_id: int, user_id: int, question: str,
                                  answer: str, context_used: dict = None) -> int:
         """Сохранить вопрос-ответ"""

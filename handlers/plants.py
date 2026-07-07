@@ -7,16 +7,15 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from states.user_states import PlantStates
 from services.plant_service import (
-    temp_analyses, save_analyzed_plant, get_user_plants_list, 
+    get_temp_analysis, delete_temp_analysis, save_analyzed_plant, get_user_plants_list,
     water_plant, water_all_plants, delete_plant, rename_plant,
     get_plant_details, get_plant_state_history
 )
 from services.subscription_service import check_limit
 from keyboards.main_menu import main_menu, simple_back_menu
 from keyboards.plant_menu import plant_control_menu, delete_confirmation
-from config import STATE_EMOJI, STATE_NAMES
 from database import get_db
-from utils.date_parser import parse_user_date, format_date_ago, get_days_offset
+from utils.date_parser import parse_user_date, format_date_ago
 
 logger = logging.getLogger(__name__)
 
@@ -101,14 +100,9 @@ async def send_plants_list(message: types.Message, plants: list, user_id: int):
         plant_name = plant['display_name']
         emoji = plant['emoji']
         
-        if plant.get('type') == 'growing':
-            stage_info = plant.get('stage_info', 'В процессе')
-            text += f"{i}. {emoji} <b>{plant_name}</b>\n   {stage_info}\n\n"
-            callback_data = f"edit_growing_{plant['growing_id']}"
-        else:
-            water_status = plant.get('water_status', '')
-            text += f"{i}. {emoji} <b>{plant_name}</b>\n   💧 {water_status}\n\n"
-            callback_data = f"edit_plant_{plant['id']}"
+        water_status = plant.get('water_status', '')
+        text += f"{i}. {emoji} <b>{plant_name}</b>\n   💧 {water_status}\n\n"
+        callback_data = f"edit_plant_{plant['id']}"
         
         short_name = plant_name[:15] + "..." if len(plant_name) > 15 else plant_name
         
@@ -237,7 +231,6 @@ async def update_state_callback(callback: types.CallbackQuery, state: FSMContext
     """Обновить состояние растения"""
     try:
         plant_id = int(callback.data.split("_")[-1])
-        user_id = callback.from_user.id
         
         await state.update_data(
             updating_plant_state=True,
@@ -282,7 +275,7 @@ async def view_state_history_callback(callback: types.CallbackQuery):
         text += f"🔄 <b>Всего изменений:</b> {details['state_changes_count']}\n\n"
         
         if history:
-            text += f"📖 <b>История изменений:</b>\n\n"
+            text += "📖 <b>История изменений:</b>\n\n"
             for entry in history[:5]:
                 date_str = entry['date'].strftime('%d.%m %H:%M')
                 
@@ -407,7 +400,7 @@ async def delete_plant_callback(callback: types.CallbackQuery):
             f"⚠️ Это действие нельзя отменить\n\n"
             f"❓ Вы уверены?",
             parse_mode="HTML",
-            reply_markup=delete_confirmation(plant_id, is_growing=False)
+            reply_markup=delete_confirmation(plant_id)
         )
         
     except Exception as e:
@@ -480,18 +473,18 @@ async def save_plant_handler(callback: types.CallbackQuery, state: FSMContext):
     
     logger.info(f"💾 save_plant_handler вызван для user_id={user_id}")
     
-    if user_id not in temp_analyses:
+    analysis_data = await get_temp_analysis(user_id)
+    if analysis_data is None:
         await callback.message.answer("❌ Нет данных. Сначала проанализируйте растение")
         await callback.answer()
         return
-    
+
     allowed, error_msg = await check_limit(user_id, 'plants')
     if not allowed:
         from handlers.subscription import send_limit_message
         await send_limit_message(callback, error_msg)
         return
-    
-    analysis_data = temp_analyses[user_id]
+
     plant_name = analysis_data.get("plant_name", "растение")
     
     await state.update_data(saving_plant=True)
@@ -516,8 +509,8 @@ async def handle_last_water_choice(callback: types.CallbackQuery, state: FSMCont
     """Обработка выбора даты полива кнопкой"""
     user_id = callback.from_user.id
     choice = callback.data.replace("last_water_", "")
-    
-    if user_id not in temp_analyses:
+
+    if await get_temp_analysis(user_id) is None:
         await callback.message.answer("❌ Данные потеряны. Проанализируйте растение заново.")
         await state.clear()
         await callback.answer()
@@ -548,7 +541,7 @@ async def handle_last_water_text(message: types.Message, state: FSMContext):
     
     logger.info(f"📅 handle_last_water_text вызван для user_id={user_id}, текст='{message.text}'")
     
-    if user_id not in temp_analyses:
+    if await get_temp_analysis(user_id) is None:
         await message.reply("❌ Данные потеряны. Проанализируйте растение заново.")
         await state.clear()
         return
@@ -574,8 +567,12 @@ async def handle_last_water_text(message: types.Message, state: FSMContext):
 async def finish_save_plant(message_or_callback, user_id: int, last_watered: datetime, state: FSMContext):
     """Завершение сохранения растения"""
     try:
-        analysis_data = temp_analyses[user_id]
-        
+        analysis_data = await get_temp_analysis(user_id)
+        if analysis_data is None:
+            await message_or_callback.answer("❌ Данные потеряны. Проанализируйте растение заново.")
+            await state.clear()
+            return
+
         # Проверяем, выдавалась ли уже стартовая скидка (33% для новых пользователей).
         # Условие именно по флагу, а не по количеству растений — иначе после сброса/удаления
         # растений старый пользователь получил бы скидку повторно.
@@ -589,12 +586,12 @@ async def finish_save_plant(message_or_callback, user_id: int, last_watered: dat
         result = await save_analyzed_plant(user_id, analysis_data, last_watered=last_watered)
         
         if result["success"]:
-            del temp_analyses[user_id]
+            await delete_temp_analysis(user_id)
             
             from services.trigger_service import cancel_chains_by_event, start_chain
             await cancel_chains_by_event(user_id, 'plant_added')
             
-            success_text = f"✅ <b>Растение добавлено!</b>\n\n"
+            success_text = "✅ <b>Растение добавлено!</b>\n\n"
             success_text += f"🌱 <b>{result['plant_name']}</b> в вашей коллекции\n"
             success_text += f"{result['state_emoji']} <b>Состояние:</b> {result['state_name']}\n"
             
@@ -603,8 +600,8 @@ async def finish_save_plant(message_or_callback, user_id: int, last_watered: dat
                 success_text += f"💧 <b>Последний полив:</b> {water_ago}\n"
             
             success_text += f"⏰ <b>Следующий полив:</b> через {result['next_watering_days']} дней\n\n"
-            success_text += f"🧠 <b>Система памяти активирована!</b>\n"
-            success_text += f"Теперь я буду помнить всю историю этого растения"
+            success_text += "🧠 <b>Система памяти активирована!</b>\n"
+            success_text += "Теперь я буду помнить всю историю этого растения"
             
             if isinstance(message_or_callback, types.Message):
                 await message_or_callback.answer(success_text, parse_mode="HTML", reply_markup=main_menu())
