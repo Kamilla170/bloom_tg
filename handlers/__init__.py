@@ -10,6 +10,7 @@ from . import questions
 from . import feedback
 from . import onboarding
 from . import admin
+from . import admin_panel
 from . import subscription
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     'feedback',
     'onboarding',
     'admin',
+    'admin_panel',
     'subscription',
 ]

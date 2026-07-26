@@ -779,6 +779,41 @@ class PlantDatabase:
             """)
             logger.info("✅ Миграция apology-скидки применена")
 
+            # === МИГРАЦИЯ: Промокоды ===
+            logger.info("🎟️ Миграция промокодов...")
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS promo_codes (
+                    id SERIAL PRIMARY KEY,
+                    code TEXT UNIQUE NOT NULL,
+                    discount_type TEXT NOT NULL DEFAULT 'percent',
+                    discount_value INTEGER NOT NULL,
+                    max_uses INTEGER,
+                    used_count INTEGER NOT NULL DEFAULT 0,
+                    valid_until TIMESTAMP,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_by BIGINT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS promo_activations (
+                    id SERIAL PRIMARY KEY,
+                    promo_id INTEGER NOT NULL REFERENCES promo_codes(id) ON DELETE CASCADE,
+                    user_id BIGINT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'entered',
+                    payment_id TEXT,
+                    plan_id TEXT,
+                    amount INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_promo_activations_user
+                ON promo_activations(user_id)
+            """)
+            logger.info("✅ Миграция промокодов применена")
+
             logger.info("✅ Все миграции применены успешно")
     
     def extract_plant_name_from_analysis(self, analysis_text: str) -> str:

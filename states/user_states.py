@@ -12,6 +12,11 @@ class PlantStates(StatesGroup):
     waiting_last_watering = State()  # Ожидание выбора даты последнего полива
 
 
+class PromoStates(StatesGroup):
+    """Состояния для ввода промокода"""
+    waiting_promo_code = State()
+
+
 class FeedbackStates(StatesGroup):
     """Состояния для обратной связи"""
     choosing_type = State()
@@ -22,3 +27,11 @@ class AdminStates(StatesGroup):
     """Состояния для админ-переписки"""
     waiting_user_reply = State()
     waiting_admin_reply = State()
+
+
+class AdminPromoStates(StatesGroup):
+    """Состояния мастера создания промокода в /admin"""
+    waiting_code = State()
+    waiting_value = State()
+    waiting_limit = State()
+    waiting_days = State()

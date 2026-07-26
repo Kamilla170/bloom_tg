@@ -30,7 +30,7 @@ from services.trigger_service import check_and_send_triggers
 # Импорты handlers
 from handlers import (
     commands, photo, callbacks, plants,
-    questions, feedback, onboarding, admin,
+    questions, feedback, onboarding, admin, admin_panel,
     subscription
 )
 
@@ -138,7 +138,7 @@ def register_middleware():
 def register_handlers():
     """Регистрация всех handlers"""
     # Регистрация routers в правильном порядке
-    dp.include_router(subscription.router)  # Подписка — до commands чтобы /pro работал
+    dp.include_router(subscription.router)  # Подписка — до commands чтобы /subscription работал
     dp.include_router(commands.router)
     dp.include_router(photo.router)
     dp.include_router(plants.router)
@@ -146,6 +146,7 @@ def register_handlers():
     dp.include_router(feedback.router)
     dp.include_router(onboarding.router)
     dp.include_router(admin.router)  # Admin router для админ-переписки
+    dp.include_router(admin_panel.router)  # Панель /admin
     dp.include_router(callbacks.router)  # Callbacks последними как fallback
     
     logger.info("✅ Handlers зарегистрированы")

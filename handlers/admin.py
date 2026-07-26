@@ -511,45 +511,82 @@ async def reply_to_user_command(message: types.Message, state: FSMContext):
     await send_message_to_user_command(message, state)
 
 
+async def get_messages_list_text(admin_id: int) -> str:
+    """Текст с историей сообщений (для /messages и /admin)"""
+    db = await get_db()
+    messages = await db.get_user_messages(admin_id, limit=20)
+
+    if not messages:
+        return "📭 <b>История сообщений пуста</b>"
+
+    text = "📬 <b>История сообщений (последние 20):</b>\n\n"
+
+    for msg in messages:
+        date = msg['sent_at'].strftime('%d.%m %H:%M')
+
+        if msg['from_user_id'] == admin_id:
+            # Исходящее
+            to_name = msg.get('to_username') or msg.get('to_first_name') or f"user_{msg['to_user_id']}"
+            direction = "→"
+            text += f"<b>{date}</b> {direction} {to_name}\n"
+        else:
+            # Входящее
+            from_name = msg.get('from_username') or msg.get('from_first_name') or f"user_{msg['from_user_id']}"
+            direction = "←"
+            text += f"<b>{date}</b> {direction} {from_name}\n"
+
+        preview = msg['message_text'][:50] + "..." if len(msg['message_text']) > 50 else msg['message_text']
+        text += f"   {preview}\n\n"
+
+    return text
+
+
 @router.message(Command("messages"))
 async def view_messages_command(message: types.Message):
     """Просмотр истории сообщений (для админов)"""
     if not is_admin(message.from_user.id):
         await message.reply("❌ У вас нет прав администратора")
         return
-    
+
     try:
-        db = await get_db()
-        messages = await db.get_user_messages(message.from_user.id, limit=20)
-        
-        if not messages:
-            await message.reply("📭 <b>История сообщений пуста</b>", parse_mode="HTML")
-            return
-        
-        text = "📬 <b>История сообщений (последние 20):</b>\n\n"
-        
-        for msg in messages:
-            date = msg['sent_at'].strftime('%d.%m %H:%M')
-            
-            if msg['from_user_id'] == message.from_user.id:
-                # Исходящее
-                to_name = msg.get('to_username') or msg.get('to_first_name') or f"user_{msg['to_user_id']}"
-                direction = "→"
-                text += f"<b>{date}</b> {direction} {to_name}\n"
-            else:
-                # Входящее
-                from_name = msg.get('from_username') or msg.get('from_first_name') or f"user_{msg['from_user_id']}"
-                direction = "←"
-                text += f"<b>{date}</b> {direction} {from_name}\n"
-            
-            preview = msg['message_text'][:50] + "..." if len(msg['message_text']) > 50 else msg['message_text']
-            text += f"   {preview}\n\n"
-        
+        text = await get_messages_list_text(message.from_user.id)
         await message.reply(text, parse_mode="HTML")
-        
+
     except Exception as e:
         logger.error(f"Ошибка просмотра сообщений: {e}", exc_info=True)
         await message.reply("❌ Ошибка загрузки")
+
+
+async def get_users_list_text() -> str:
+    """Текст со списком активных пользователей (для /users и /admin)"""
+    db = await get_db()
+
+    async with db.pool.acquire() as conn:
+        # Последние 20 активных пользователей
+        users = await conn.fetch("""
+            SELECT user_id, username, first_name, last_activity,
+                   plants_count, total_waterings, questions_asked
+            FROM users
+            WHERE last_activity IS NOT NULL
+            ORDER BY last_activity DESC
+            LIMIT 20
+        """)
+
+    if not users:
+        return "📭 <b>Пользователи не найдены</b>"
+
+    text = "👥 <b>Последние 20 активных пользователей:</b>\n\n"
+
+    for user in users:
+        username = user['username'] or user['first_name'] or f"user_{user['user_id']}"
+        last_activity = user['last_activity'].strftime('%d.%m %H:%M') if user['last_activity'] else 'никогда'
+
+        text += f"👤 <b>{username}</b>\n"
+        text += f"   🆔 ID: <code>{user['user_id']}</code>\n"
+        text += f"   📅 Активность: {last_activity}\n"
+        text += f"   🌱 Растений: {user['plants_count']}, 💧 Поливов: {user['total_waterings']}\n\n"
+
+    return text
 
 
 @router.message(Command("users"))
@@ -558,38 +595,11 @@ async def list_users_command(message: types.Message):
     if not is_admin(message.from_user.id):
         await message.reply("❌ У вас нет прав администратора")
         return
-    
+
     try:
-        db = await get_db()
-        
-        async with db.pool.acquire() as conn:
-            # Последние 20 активных пользователей
-            users = await conn.fetch("""
-                SELECT user_id, username, first_name, last_activity, 
-                       plants_count, total_waterings, questions_asked
-                FROM users
-                WHERE last_activity IS NOT NULL
-                ORDER BY last_activity DESC
-                LIMIT 20
-            """)
-        
-        if not users:
-            await message.reply("📭 <b>Пользователи не найдены</b>", parse_mode="HTML")
-            return
-        
-        text = "👥 <b>Последние 20 активных пользователей:</b>\n\n"
-        
-        for user in users:
-            username = user['username'] or user['first_name'] or f"user_{user['user_id']}"
-            last_activity = user['last_activity'].strftime('%d.%m %H:%M') if user['last_activity'] else 'никогда'
-            
-            text += f"👤 <b>{username}</b>\n"
-            text += f"   🆔 ID: <code>{user['user_id']}</code>\n"
-            text += f"   📅 Активность: {last_activity}\n"
-            text += f"   🌱 Растений: {user['plants_count']}, 💧 Поливов: {user['total_waterings']}\n\n"
-        
+        text = await get_users_list_text()
         await message.reply(text, parse_mode="HTML")
-        
+
     except Exception as e:
         logger.error(f"Ошибка списка пользователей: {e}", exc_info=True)
         await message.reply("❌ Ошибка загрузки")
