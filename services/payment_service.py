@@ -308,7 +308,7 @@ async def _notify_user_payment_success(user_id: int, expires_at: datetime, plan_
         
         # «Доступ навсегда» хранится как подписка на 100 лет — дату не показываем
         if expires_at.year >= 2100:
-            expires_text = "📅 Активна: <b>навсегда</b> ♾"
+            expires_text = "📅 Активна: <b>навсегда</b> 🌟"
         else:
             expires_text = f"📅 Активна до: <b>{expires_at.strftime('%d.%m.%Y')}</b>"
         plan_text = f"\n📦 Тариф: <b>{plan_label}</b>" if plan_label else ""

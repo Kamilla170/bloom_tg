@@ -26,7 +26,7 @@ def plans_keyboard():
     buttons = []
     for plan_id, plan in SUBSCRIPTION_PLANS.items():
         if plan.get('lifetime'):
-            text = f"♾ {plan['label']} — {plan['price']}₽"
+            text = f"🌟 {plan['label']} — {plan['price']}₽"
         elif plan['days'] > 30:
             text = f"⭐ {plan['label']} — {plan['price']}₽ ({plan['per_month']}₽/мес)"
         else:
@@ -72,7 +72,7 @@ def _pro_status_text(plan_info: dict) -> str:
     if plan_info.get('is_lifetime'):
         return (
             "⭐ <b>Ваш план: Подписка</b>\n\n"
-            "📅 Активна: <b>навсегда</b> ♾\n\n"
+            "📅 Активна: <b>навсегда</b> 🌟\n\n"
             "🌱 Без ограничений на растения, анализы и вопросы"
         )
 
@@ -226,7 +226,7 @@ async def buy_plan_callback(callback: types.CallbackQuery):
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu")],
         ])
 
-        period_text = "навсегда ♾" if plan.get('lifetime') else f"{plan['days']} дней"
+        period_text = "навсегда 🌟" if plan.get('lifetime') else f"{plan['days']} дней"
         auto_text = "\n🔄 Автопродление: включено" if save_method else ""
 
         await callback.message.answer(
