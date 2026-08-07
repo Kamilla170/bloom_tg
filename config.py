@@ -35,101 +35,34 @@ FREE_LIMITS = {
     'questions': 1,     # вопросов в месяц
 }
 
-# Тарифные планы подписки (обычные цены)
+# Вечный доступ храним как подписку на 100 лет — все механизмы
+# (activate_pro, автопродление, webhook) работают без изменений
+LIFETIME_DAYS = 36500
+
+# Тарифные планы подписки
 SUBSCRIPTION_PLANS = {
-    '1month': {
-        'label': '1 месяц',
-        'price': 249,
-        'days': 30,
-        'per_month': 249,
+    'forever': {
+        'label': 'Доступ навсегда',
+        'price': 1999,
+        'days': LIFETIME_DAYS,
+        'lifetime': True,
     },
     '3months': {
         'label': '3 месяца',
-        'price': 599,
+        'price': 849,
         'days': 90,
-        'per_month': 200,
+        'per_month': 283,
     },
-    '6months': {
-        'label': '6 месяцев',
-        'price': 1099,
-        'days': 180,
-        'per_month': 183,
-    },
-    '12months': {
-        'label': '12 месяцев',
-        'price': 2099,
-        'days': 365,
-        'per_month': 175,
-    },
-}
-
-# Скидочные цены для новых пользователей (33%)
-DISCOUNT_PLANS = {
     '1month': {
         'label': '1 месяц',
-        'price': 169,
+        'price': 299,
         'days': 30,
-        'original_price': 249,
-    },
-    '3months': {
-        'label': '3 месяца',
-        'price': 399,
-        'days': 90,
-        'original_price': 599,
-    },
-    '6months': {
-        'label': '6 месяцев',
-        'price': 739,
-        'days': 180,
-        'original_price': 1099,
-    },
-    '12months': {
-        'label': '12 месяцев',
-        'price': 1369,
-        'days': 365,
-        'original_price': 2099,
+        'per_month': 299,
     },
 }
-# Скидка 40% — извинения за сбой (апрель 2026).
-# Механизм одноразовый, выдаётся вручную через /send_apology.
-APOLOGY_DISCOUNT_PLANS = {
-    '1month': {
-        'label': '1 месяц',
-        'price': 149,
-        'original_price': 249,
-        'days': 30,
-        'per_month': 149,
-    },
-    '3months': {
-        'label': '3 месяца',
-        'price': 349,
-        'original_price': 599,
-        'days': 90,
-        'per_month': 116,
-    },
-    '6months': {
-        'label': '6 месяцев',
-        'price': 649,
-        'original_price': 1099,
-        'days': 180,
-        'per_month': 108,
-    },
-    '12months': {
-        'label': '12 месяцев',
-        'price': 1249,
-        'original_price': 2099,
-        'days': 365,
-        'per_month': 104,
-    },
-}
-
-APOLOGY_DISCOUNT_DURATION_DAYS = 3
-
-# Срок действия скидки для новых пользователей (дни с момента регистрации)
-DISCOUNT_DURATION_DAYS = 3
 
 # Для обратной совместимости
-PRO_PRICE = 249  # цена базового плана
+PRO_PRICE = 299  # цена базового плана
 PRO_DURATION_DAYS = 30
 PRO_GRACE_PERIOD_DAYS = 3  # дней после неудачного автоплатежа
 

@@ -1,7 +1,6 @@
 import logging
 import uuid
 import aiohttp
-import json
 from datetime import datetime
 from typing import Dict, Optional
 from base64 import b64encode
@@ -32,17 +31,20 @@ def _get_headers(idempotency_key: str = None) -> dict:
 
 
 async def create_payment(user_id: int, amount: int = None, days: int = 30,
-                         plan_label: str = "1 месяц", save_method: bool = True) -> Optional[Dict]:
+                         plan_label: str = "1 месяц", save_method: bool = True,
+                         promo_code: str = None, base_amount: int = None) -> Optional[Dict]:
     """
     Создать платёж в YooKassa.
-    
+
     Args:
         user_id: ID пользователя Telegram
         amount: сумма платежа в рублях
         days: количество дней подписки
         plan_label: название тарифа для описания
         save_method: сохранить метод оплаты для автоплатежей
-    
+        promo_code: применённый промокод (скидка только на этот платёж)
+        base_amount: полная цена тарифа — по ней пойдёт автопродление
+
     Returns:
         dict с payment_id, confirmation_url, status или None
     """
@@ -79,6 +81,11 @@ async def create_payment(user_id: int, amount: int = None, days: int = 30,
         },
         "save_payment_method": save_method,
     }
+
+    if promo_code:
+        payload["metadata"]["promo_code"] = promo_code
+    if base_amount is not None:
+        payload["metadata"]["base_amount"] = str(base_amount)
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -204,6 +211,8 @@ async def handle_payment_webhook(payload: dict) -> bool:
         user_id = int(user_id)
         days = int(metadata.get('days', 30))
         amount = int(metadata.get('amount', PRO_PRICE))
+        # При оплате с промокодом автопродление идёт по полной цене тарифа
+        renewal_amount = int(metadata.get('base_amount', amount))
         
         logger.info(f"💳 Webhook: event={event_type}, payment_id={payment_id}, status={status}, user_id={user_id}, {amount}₽/{days}д")
         
@@ -236,12 +245,18 @@ async def handle_payment_webhook(payload: dict) -> bool:
             # Активируем подписку на нужное количество дней
             from services.subscription_service import activate_pro
             expires_at = await activate_pro(
-                user_id, 
+                user_id,
                 days=days,
-                amount=amount,
+                amount=renewal_amount,
                 payment_method_id=payment_method_id
             )
-            
+
+            # Фиксируем использование промокода
+            promo_code = metadata.get('promo_code')
+            if promo_code:
+                from services.promo_service import confirm_paid_by_payment
+                await confirm_paid_by_payment(user_id, promo_code, payment_id)
+
             plan_label = metadata.get('plan_label', f'{days} дней')
             logger.info(f"✅ Подписка активирована для user_id={user_id}, план={plan_label}, expires={expires_at}")
             
@@ -307,16 +322,20 @@ async def _notify_user_payment_success(user_id: int, expires_at: datetime, plan_
     try:
         from bot import bot
         
-        expires_str = expires_at.strftime('%d.%m.%Y')
+        # «Доступ навсегда» хранится как подписка на 100 лет — дату не показываем
+        if expires_at.year >= 2100:
+            expires_text = "📅 Активна: <b>навсегда</b> 🌟"
+        else:
+            expires_text = f"📅 Активна до: <b>{expires_at.strftime('%d.%m.%Y')}</b>"
         plan_text = f"\n📦 Тариф: <b>{plan_label}</b>" if plan_label else ""
-        
+
         await bot.send_message(
             chat_id=user_id,
             text=(
                 "🎉 <b>Подписка активирована!</b>\n\n"
                 f"✅ Ваш план: <b>Подписка</b>"
                 f"{plan_text}\n"
-                f"📅 Активна до: <b>{expires_str}</b>\n\n"
+                f"{expires_text}\n\n"
                 "🌱 Теперь у вас безлимитный доступ:\n"
                 "• Неограниченные растения\n"
                 "• Безлимитные анализы фото\n"

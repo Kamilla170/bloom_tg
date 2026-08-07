@@ -5,20 +5,16 @@ class PlantStates(StatesGroup):
     """Состояния для работы с растениями"""
     waiting_question = State()
     editing_plant_name = State()
-    choosing_plant_to_grow = State()
-    planting_setup = State()
-    waiting_growing_photo = State()
-    adding_diary_entry = State()
     onboarding_welcome = State()
     onboarding_demo = State()
     onboarding_quick_start = State()
     waiting_state_update_photo = State()
-    
-    # Новые состояния для указания даты полива при добавлении растения
     waiting_last_watering = State()  # Ожидание выбора даты последнего полива
-    
-    # Новые состояния для указания даты последнего полива при сохранении
-    waiting_last_watering = State()
+
+
+class PromoStates(StatesGroup):
+    """Состояния для ввода промокода"""
+    waiting_promo_code = State()
 
 
 class FeedbackStates(StatesGroup):
@@ -31,3 +27,11 @@ class AdminStates(StatesGroup):
     """Состояния для админ-переписки"""
     waiting_user_reply = State()
     waiting_admin_reply = State()
+
+
+class AdminPromoStates(StatesGroup):
+    """Состояния мастера создания промокода в /admin"""
+    waiting_code = State()
+    waiting_value = State()
+    waiting_limit = State()
+    waiting_days = State()
